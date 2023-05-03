@@ -2447,6 +2447,7 @@ public class Game extends BaseLudeme implements API, Serializable
 		return passMove;
 	}
 
+
 	/**
 	 * Initialise the game graph and other variables.
 	 */
@@ -2455,33 +2456,42 @@ public class Game extends BaseLudeme implements API, Serializable
 	{
 		if (finishedPreprocessing)
 			System.err.println("Warning! Game.create() has already previously been called on " + name());
+		//System.out.println("equipment: " + equipment + ", rules: " + rules);
+		initializeEquipmentAndRules();
 
+		// Create the times of the equipment.
+		equipment.createItems(this);
+
+		createGame();
+	}
+
+	protected void initializeEquipmentAndRules()
+	{
 		if (equipment == null) // If no equipment defined we use the default one.
 			equipment = new Equipment
-			(
-				new Item[]
-						{ 
-							new Board
-							(
-								new RectangleOnSquare
+						(
+							new Item[]
+								{
+									new Board
 									(
-										new DimConstant(3), 
-										null, 
-										null, 
-										null
-									), 
-								null,
-								null,
-								null, 
-								null, 
-								null,
-								Boolean.FALSE
-							) 
-						}
-			);
+										new RectangleOnSquare
+											(
+												new DimConstant(3),
+												null,
+												null,
+												null
+											),
+										null,
+										null,
+										null,
+										null,
+										null,
+										Boolean.FALSE
+									)
+								}
+						);
 
 		if (rules == null) // If no rules defined we use the default ones.
-		{
 			rules = new Rules
 					(
 						null, // no metarules
@@ -2490,19 +2500,19 @@ public class Game extends BaseLudeme implements API, Serializable
 						(
 							game.rules.play.moves.decision.Move.construct
 							(
-								MoveSiteType.Add, 
+								MoveSiteType.Add,
 								null,
 								new To
 								(
-									null, 
-									SitesEmpty.construct(null, null), 
-									null, 
-									null, 
 									null,
-									null, 
+									SitesEmpty.construct(null, null),
+									null,
+									null,
+									null,
+									null,
 									null
-								), 
-							null, 
+								),
+							null,
 							null,
 							null
 							)
@@ -2513,15 +2523,15 @@ public class Game extends BaseLudeme implements API, Serializable
 						(
 							Is.construct
 							(
-								IsLineType.Line, null, new IntConstant(3), 
-								null, 
+								IsLineType.Line, null, new IntConstant(3),
 								null,
-								null, 
-								null, 
-								null, 
-								null, 
-								null, 
-								null, 
+								null,
+								null,
+								null,
+								null,
+								null,
+								null,
+								null,
 								null,
 								null,
 								null
@@ -2529,15 +2539,13 @@ public class Game extends BaseLudeme implements API, Serializable
 							null,
 							null,
 							new Result(RoleType.Mover, ResultType.Win)
-						), 
+						),
 						null
 					)
 				);
-		}
+	}
 
-		// Create the times of the equipment.
-		equipment.createItems(this);
-
+	public void createGame() {
 		// We add the index of the owner at the end of the name of each component.
 		for (int i = 1; i < equipment.components().length; i++)
 		{
@@ -2663,10 +2671,10 @@ public class Game extends BaseLudeme implements API, Serializable
 
 		// Create custom, optimised playout strategies
 		addCustomPlayouts();
-		
+
 		finishedPreprocessing = true;
 	}
-	
+
 	/**
 	 * @return End rules for this game
 	 */

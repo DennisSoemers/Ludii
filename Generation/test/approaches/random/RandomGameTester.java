@@ -1,4 +1,4 @@
-import approaches.random.Generator;
+package approaches.random;
 
 /**
  * Random game tester.

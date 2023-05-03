@@ -1,20 +1,8 @@
 package approaches.random;
 
-import java.text.DecimalFormat;
-import java.util.ArrayList;
-import java.util.BitSet;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Random;
-import java.util.concurrent.ThreadLocalRandom;
-
-import game.Game;
 import compiler.Compiler;
+import game.Game;
 import grammar.Grammar;
-import parser.Expander;
-import parser.Parser;
 import main.FileHandling;
 import main.StringRoutines;
 import main.grammar.Baptist;
@@ -28,6 +16,12 @@ import main.options.UserSelections;
 import other.context.Context;
 import other.move.Move;
 import other.trial.Trial;
+import parser.Expander;
+import parser.Parser;
+
+import java.text.DecimalFormat;
+import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
 
 //-----------------------------------------------------------------------------
 
@@ -36,7 +30,7 @@ import other.trial.Trial;
  *
  * @author cambolbro
  */
-public class Generator
+public class StatefulGenerator
 {
 	/**
 	 * First item in each entry is the relevant ludeme name, the second item
@@ -298,6 +292,9 @@ public class Generator
 			if (clauseString.equals("string")) {
 				return "%string%";
 			}
+			else if (clauseString.equals("int")) {
+				return "%int%";
+			}
 
 			// Check for primitive arrays.
 			// NOTE: the length of the arrays is biased towards small lengths since rng.nextInt() is re-evaluated at every iteration.
@@ -361,7 +358,7 @@ public class Generator
 
 			if (depth + 1 >= MAX_DEPTH)
 			{
-				//System.out.println("** Maximum depth " + MAX_DEPTH + " reached in complete() B.");
+				System.out.println("** Maximum depth " + MAX_DEPTH + " reached in complete() B.");
 				return "";
 			}
 
@@ -469,7 +466,7 @@ public class Generator
 					}
 					else
 					{
-						//System.out.println("** Generator.handleConstructor(): Three dimensional arrays not support yet.");
+						System.out.println("** Generator.handleConstructor(): Three dimensional arrays not support yet.");
 					}
 				}
 				str += " }";
@@ -504,12 +501,6 @@ public class Generator
 		{
 			System.out.println("** Clause arg has more than one rule match: " + arg.token());
 			return "?";
-		}
-
-		if (depth + 1 >= 1000)
-		{
-			System.out.println("** Safe generation depth " + depth + " exceeded in handleArg() B.");
-			return "";
 		}
 
 		return complete(argRule.get(0), rng, depth + 1);
@@ -747,12 +738,13 @@ public class Generator
 		{
 			System.out.println("\n---------------------------------\nGame " + n + ":");
 
-			final String str = Generator.generate("game", randomSeed ? rng.nextLong() : n);
+			final String str = StatefulGenerator.generate("game", randomSeed ? rng.nextLong() : n);
 			System.out.println(str);
 
 			if (str == "")
 				continue;  // generation failed
 
+			System.out.println("is valid");
 			numValid++;
 
 			String gameName = StringRoutines.gameName(str);
@@ -773,8 +765,11 @@ public class Generator
 					FileHandling.saveStringToFile(str, "../Common/res/lud/test/buggy/unparsable/", fileName);
 				continue;
 			}
-			//System.out.println("Parses...");
+
+			System.out.println("Parses...");
 			numParse++;
+			if (true)
+				continue;
 
 			if (!boardlessIncluded)
 			{
@@ -812,7 +807,7 @@ public class Generator
 					FileHandling.saveStringToFile(str, "../Common/res/lud/test/buggy/uncompilable/", fileName);
 				continue;
 			}
-			//System.out.println("Compiles...");
+			System.out.println("Compiles...");
 			numCompile++;
 
 			if (isValid)
@@ -892,205 +887,6 @@ public class Generator
 	//-------------------------------------------------------------------------
 
 	/**
-	 * Method from Eric to improve some generations did with Ludii.
-	 *
-	 * @param numGames             The number of games to generate.
-	 * @param dlpRestriction       If we apply some DLP restrictions (like no
-	 *                             boardless, cards etc...)
-	 * @param withDecision If we keep the games with only decision moves.
-	 * @return The last valid game description.
-	 */
-	public static String testGamesEric
-	(
-			final int numGames, final boolean dlpRestriction,
-			final boolean withDecision
-	)
-	{
-		Grammar.grammar().ebnf();  // trigger grammar and EBNF structure to be created
-
-		final Generator generator = new Generator();
-
-		final long startAt = System.currentTimeMillis();
-
-		final Report report = new Report();
-
-		// Keep a record of the last valid, playable, generated game, which will be returned at the end.
-		String lastGeneratedGame = null;
-
-		final Random rng = new Random();
-
-		// Generate games
-		int n = 0;
-		int numTry = 0;
-		while(n < numGames)
-		{
-			final String str = generator.generate("game", rng.nextLong());
-
-			if (str == "")
-			{
-				numTry++;
-				// System.out.println("Generation failed for try " + numTry);
-				continue;  // generation failed
-			}
-
-			final boolean containsPlayRules = str.contains("(play");
-			final boolean containsEndRules = str.contains("(end");
-			final boolean containsMatch = str.contains("(match");
-
-			if (!containsPlayRules || !containsEndRules || containsMatch)
-			{
-				numTry++;
-				// System.out.println("Game is a match or does not generate a play and end rule
-				// " + numTry);
-				continue;
-			}
-
-			// Check whether game parses
-			final Description description = new Description(str);
-			final UserSelections userSelections = new UserSelections(new ArrayList<String>());
-
-			Parser.expandAndParse(description, userSelections, report, false);
-			if (report.isError())
-			{
-				// Game does not parse
-				// FileHandling.saveStringToFile(str,
-				// "../Common/res/lud/test/buggy/unparsable/", fileName);
-
-				numTry++;
-				// System.out.println("Game unparsable for try " + numTry);
-				continue;
-			}
-
-//			for (final String warning : report.warnings())
-//				if (!warning.contains("No version info."))
-//					System.out.println("- Warning: " + warning);
-
-			// Check whether game compiles
-			Game game = null;
-			try
-			{
-				game = (Game)Compiler.compileTest(new Description(str), false);
-			}
-			catch (final Exception e)
-			{
-				// Nothing to do.
-			}
-
-			if (game == null)
-			{
-				// Game does not compile
-				numTry++;
-				// System.out.println("Game uncompilable for try " + numTry);
-				continue;
-			}
-
-			if (game.hasMissingRequirement() || game.willCrash())
-			{
-				numTry++;
-				// System.out.println("Game with warning and possible crash for try " + numTry);
-				continue;
-			}
-
-			// No boardless, No match, no deduc Puzzle, cards, dominoes or large pieces, no
-			// hidden info.
-			// Only Alternating game.
-			if (dlpRestriction)
-				if (game.hasSubgames() || game.isBoardless() || game.isDeductionPuzzle() || game.hasCard()
-						|| game.hasDominoes() || game.hasLargePiece() || !game.isAlternatingMoveGame()
-						|| game.hiddenInformation()
-				)
-				{
-					numTry++;
-					// System.out.println("Game not satisfying for try " + numTry);
-					continue;
-				}
-
-			final String fileName = game.name() + ".lud";
-
-			// Check whether game is functional
-			if (withDecision)
-			{
-				if (!isFunctionalAndWithOnlyDecision(game))
-				{
-					// Game is not functional
-					numTry++;
-					// System.out.println("Game non functional or has a move with no decision for
-					// try " + numTry);
-					continue;
-				}
-			}
-			else if (!isFunctional(game))
-			{
-				// Game is not functional
-				numTry++;
-				FileHandling.saveStringToFile(str, "../Common/res/lud/test/buggy/nonfunctional/", fileName);
-				// System.out.println("Game non functional for
-				// try " + numTry);
-				continue;
-			}
-
-			// Check whether game is playable
-			if (!isPlayable(game))
-			{
-				// Game is not playable
-				numTry++;
-				FileHandling.saveStringToFile(str, "../Common/res/lud/test/buggy/unplayable/", fileName);
-				// System.out.println("Game unplayable for try " + numTry);
-				continue;
-			}
-			else
-			{
-				FileHandling.saveStringToFile(str, "../Common/res/lud/test/buggy/toTest/", fileName);
-				System.out.println("GAME " + n + " GENERATED");
-				numTry++;
-				n++;
-			}
-
-			lastGeneratedGame = str;
-		}
-
-		final double secs = (System.currentTimeMillis() - startAt) / 1000.0;
-
-		System.out.println("Generation done in " + secs + " seconds");
-		System.out.println(numTry + " tries were necessary.");
-
-		return lastGeneratedGame;
-	}
-
-	/**
-	 * @return Whether a trial of the game can be played without crashing.
-	 */
-	public static boolean isFunctionalAndWithOnlyDecision(final Game game)
-	{
-		final Context context = new Context(game, new Trial(game));
-		game.start(context);
-		Trial trial = null;
-		try
-		{
-			trial = game.playout
-					(
-							context, null, 1.0, null, 0, MAX_MOVES,
-							ThreadLocalRandom.current()
-					);
-		}
-		catch(final Exception e)
-		{
-			e.printStackTrace();
-		}
-
-		if(trial == null)
-			return false;
-
-		for(final Move m : trial.generateCompleteMovesList())
-			if(!m.isDecision())
-				return false;
-
-		return true;
-	}
-
-	//-------------------------------------------------------------------------
-
-	/**
 	 * @return Whether a trial of the game can be played without crashing.
 	 */
 	public static boolean isFunctional(final Game game)
@@ -1160,109 +956,7 @@ public class Generator
 		return numResults >= NUM_TRIALS / 2;
 	}
 
-	//-------------------------------------------------------------------------
-
-	@SuppressWarnings("static-method")
-	void test()
-	{
-		Grammar.grammar().ebnf();  // trigger grammar and EBNF structure to be created
-
-		// Check rules
-		int numClauses = 0;
-		for (final EBNFRule rule : Grammar.grammar().ebnf().rules().values())
-		{
-			numClauses += rule.rhs().size();
-			for (final EBNFClause clause : rule.rhs())
-			{
-				//System.out.println("EBNF clause: " + clause);
-
-				if (clause != null && clause.args() != null)
-					for (final EBNFClauseArg arg : clause.args())
-					{
-						final List<EBNFRule> list = findRules(arg.token());
-						if
-						(
-								list.isEmpty()
-										&&
-										!arg.token().equalsIgnoreCase("string")
-										&&
-										!Character.isUpperCase(arg.token().charAt(0))  // probably a single enum that has been instantiated
-						)
-						{
-							System.out.println("** No rule for: " + arg);
-						}
-					}
-			}
-		}
-		System.out.println(Grammar.grammar().ebnf().rules().size() + " EBNF rules with " + numClauses + " clauses generated.");
-
-//		final Random rng = new Random();
-//		final int bound = 2;
-//		for (int seed = 0; seed < 100; seed++)
-//		{
-//			rng.setSeed(seed);
-//			//rng.nextInt();
-//			for (int n = 0; n < 32; n++)
-//				System.out.print(rng.nextInt(bound) + " ");
-//			System.out.println();
-//		}
-
-		System.out.println("===========================================================\n");
-
-		final long startAt = System.currentTimeMillis();
-
-		// Generate games
-		final int NUM_GAMES = 1000;
-		for (int n = 0; n < NUM_GAMES; n++)
-		{
-			final String str = generate("game", n);
-
-			if (n % 100 == 0)
-			{
-				System.out.println(n + ":");
-				System.out.println(str == "" ? "** Generation failed.\n" : str);
-			}
-		}
-
-		final double secs = (System.currentTimeMillis() - startAt) / 1000.0;
-		System.out.println(NUM_GAMES + " games generated in " + secs + "s.");
-
-		System.out.println("===========================================================\n");
-
-		// Generate sub-ludeme
-		String str = generate("or", 0);
-		System.out.println(str);
-
-		str = generate("or", 1);
-		System.out.println(str);
-
-		System.out.println("===========================================================\n");
-
-		// Generate sub-ludeme
-		str = generate("board", System.currentTimeMillis());
-		System.out.println(str);
-
-		System.out.println("===========================================================\n");
-
-		// Generate enum
-		str = generate("ShapeType", 0);
-		System.out.println(str);
-
-		str = generate("ShapeType", 1);
-		System.out.println(str);
+	public static void main(String[] args) {
+		StatefulGenerator.testGames(100, false, false, false, false);
 	}
-
-	//-------------------------------------------------------------------------
-
-	/**
-	 * The main method of the generator.
-	 *
-	 * @param arg
-	 */
-	public static void main(final String[] arg)
-	{
-		final Generator generator = new Generator();
-		generator.test();
-	}
-
 }
